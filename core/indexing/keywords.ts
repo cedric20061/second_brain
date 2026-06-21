@@ -28,7 +28,7 @@ export function extractKeywords(text: string, limit = 15): Keyword[] {
     .slice(0, limit);
 }
 
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // enlève les accents (café → cafe)

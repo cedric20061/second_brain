@@ -26,7 +26,7 @@ function ensureInitialized(w: Worker) {
   if (initialized) return;
   initialized = true;
   // cast the path to any to satisfy overloaded typing of browser.runtime.getURL
-  const wasmBaseUrl = browser.runtime.getURL(('wasm/'));
+  const wasmBaseUrl = browser.runtime.getURL(('wasm/' as any));
   w.postMessage({ type: 'INIT', wasmBaseUrl });
 }
 
