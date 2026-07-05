@@ -3,6 +3,15 @@ import { getDb, query } from './db';
 import type { ExtractedPage, StoredPage } from '../core/types';
 import type { Keyword } from '../core/indexing/keywords';
 
+export interface RecentPage {
+  id: number;
+  url: string;
+  title: string;
+  excerpt: string | null;
+  clusterId: number | null;
+  capturedAt: number;
+}
+
 export async function savePage(page: ExtractedPage): Promise<StoredPage> {
   const db = await getDb();
 
@@ -61,4 +70,23 @@ export async function saveKeywords(pageId: number, keywords: Keyword[]): Promise
     JSON.stringify(keywords),
     pageId,
   ]);
+}
+
+export async function getRecentPages(limit = 50, offset = 0): Promise<RecentPage[]> {
+  const db = await getDb();
+  const result = await db.query<{
+    id: number; url: string; title: string;
+    excerpt: string | null; cluster_id: number | null; captured_at: number;
+  }>(
+    `SELECT id, url, title, excerpt, cluster_id,
+            extract(epoch from captured_at) * 1000 AS captured_at
+     FROM pages
+     ORDER BY captured_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return result.rows.map((r) => ({
+    id: r.id, url: r.url, title: r.title,
+    excerpt: r.excerpt, clusterId: r.cluster_id, capturedAt: r.captured_at,
+  }));
 }

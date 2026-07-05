@@ -14,14 +14,23 @@ export async function saveEmbedding(pageId: number, embedding: number[]): Promis
   );
 }
 
-export async function findSimilarPages(embedding: number[], limit = 10) {
+export async function findSimilarPages(embedding: number[], limit = 20) {
   const db = await getDb();
   const vectorLiteral = `[${embedding.join(',')}]`;
 
-  // L'opérateur <=> est la distance cosine fournie par pgvector
-  const result = await db.query(
-    `SELECT p.id, p.title, p.url,
-            1 - (pe.embedding <=> $1) AS similarity
+  const result = await db.query<{
+    id: number;
+    title: string;
+    url: string;
+    excerpt: string;
+    site_name: string | null;
+    captured_at: number;
+    similarity: number;
+  }>(
+    `SELECT
+       p.id, p.title, p.url, p.excerpt, p.site_name,
+       extract(epoch from p.captured_at) * 1000 AS captured_at,
+       1 - (pe.embedding <=> $1) AS similarity
      FROM page_embeddings pe
      JOIN pages p ON p.id = pe.page_id
      ORDER BY pe.embedding <=> $1

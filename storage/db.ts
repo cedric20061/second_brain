@@ -28,6 +28,8 @@ async function initDb(): Promise<PGlite> {
 const migrations = [
   () => import('./migrations/001_init.sql?raw'),
   () => import('./migrations/002_add_keywords.sql?raw'),
+  () => import('./migrations/003_add_fts.sql?raw'),
+  () => import('./migrations/004_add_clusters.sql?raw'), // ← nouveau
 ];
 
 async function runMigrations(db: PGlite) {
