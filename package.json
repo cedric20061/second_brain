@@ -19,14 +19,19 @@
     "@electric-sql/pglite-pgvector": "^0.0.4",
     "@huggingface/transformers": "^4.2.0",
     "@mozilla/readability": "^0.6.0",
+    "cytoscape": "^3.34.3",
     "dompurify": "^3.4.11",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "graphology": "^0.26.0",
+    "ml-kmeans": "^7.0.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.0",
+    "@types/cytoscape": "^3.31.0",
     "@types/dompurify": "^3.2.0",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@wxt-dev/module-react": "^1.1.5",
     "typescript": "^5.9.3",
