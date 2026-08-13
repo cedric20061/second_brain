@@ -1,42 +1,40 @@
 // core/indexing/embeddings.ts
-let worker: Worker | null = null;
-let initialized = false;
+import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers';
 
-const pending = new Map<string, { resolve: (v: number[]) => void; reject: (e: Error) => void }>();
+env.allowLocalModels = false;
+env.useBrowserCache = true; // le modèle est mis en cache après le premier téléchargement
 
-function getWorker(): Worker {
-  if (worker) return worker;
+// On peut appeler browser.runtime.getURL ici car on est dans le service worker
+// (impossible depuis un Worker classique — c'était la raison du Worker avant)
+if(env.backends.onnx.wasm?.wasmPaths) env.backends.onnx.wasm.wasmPaths = browser.runtime.getURL('wasm/' as any);
 
-  worker = new Worker(new URL('../../workers/embedding.worker.ts', import.meta.url), {
-    type: 'module',
-  });
+let modelPromise: Promise<FeatureExtractionPipeline> | null = null;
 
-  worker.onmessage = (event) => {
-    const { id, embedding, error } = event.data;
-    const task = pending.get(id);
-    if (!task) return;
-    pending.delete(id);
-    error ? task.reject(new Error(error)) : task.resolve(embedding);
-  };
-
-  return worker;
+function getModel(): Promise<FeatureExtractionPipeline> {
+  if (!modelPromise) {
+    console.log('[Embeddings] Chargement du modèle...');
+    modelPromise = pipeline(
+      'feature-extraction',
+      'Xenova/all-MiniLM-L6-v2',
+      { dtype: 'q8' }
+    ) as Promise<FeatureExtractionPipeline>;
+  }
+  return modelPromise;
 }
 
-function ensureInitialized(w: Worker) {
-  if (initialized) return;
-  initialized = true;
-  // cast the path to any to satisfy overloaded typing of browser.runtime.getURL
-  const wasmBaseUrl = browser.runtime.getURL(('wasm/' as any));
-  w.postMessage({ type: 'INIT', wasmBaseUrl });
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const model = await getModel();
+  const output = await model(text.slice(0, 2000), {
+    pooling: 'mean',
+    normalize: true,
+  });
+  return Array.from(output.data as Float32Array);
 }
 
-export function generateEmbedding(text: string): Promise<number[]> {
-  const w = getWorker();
-  ensureInitialized(w);
-
-  const id = crypto.randomUUID();
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    w.postMessage({ type: 'EMBED', id, text });
-  });
+// Appelé au démarrage du service worker pour préchauffer le modèle
+// sans attendre la première capture (évite la latence sur la première page)
+export function warmupModel(): void {
+  getModel().catch((err) =>
+    console.error('[Embeddings] Erreur au préchauffage :', err)
+  );
 }
