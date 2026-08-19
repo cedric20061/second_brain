@@ -1,145 +1,146 @@
-# ◎ Second Brain — Documentation technique
+# ◎ Second Brain — Technical Documentation
 
-> Moteur de mémoire personnelle augmentée sous forme d'extension Chrome.
-> 100 % local, zéro API cloud, zéro coût.
-
----
-
-## Table des matières
-
-1. [Concept & philosophie](#1-concept--philosophie)
-2. [Stack technique](#2-stack-technique)
-3. [Structure des fichiers](#3-structure-des-fichiers)
-4. [Architecture & communication entre modules](#4-architecture--communication-entre-modules)
-5. [Les trois pipelines en détail](#5-les-trois-pipelines-en-détail)
-   - [Pipeline Capture](#51-pipeline-capture--la-base-de-tout)
-   - [Pipeline Recherche](#52-pipeline-recherche)
-   - [Pipeline Graphe](#53-pipeline-graphe)
-6. [Rôle de chaque fichier](#6-rôle-de-chaque-fichier)
-7. [Installation & lancement](#7-installation--lancement)
-8. [Tester le projet](#8-tester-le-projet)
-9. [Configuration & paramètres clés](#9-configuration--paramètres-clés)
-10. [Dépannage fréquent](#10-dépannage-fréquent)
+> A personal augmented memory engine built as a Chrome extension.
+> 100% local, zero cloud APIs, zero cost.
 
 ---
 
-## 1. Concept & philosophie
+## Table of Contents
 
-Second Brain transforme ton navigateur en **moteur de mémoire personnelle** : chaque page que tu lis est automatiquement capturée, nettoyée, indexée, et rendue recherchable — sans jamais quitter ta machine.
-
-**Aucune API externe.** Aucun Gemini, OpenAI, ou Claude. Tout tourne localement :
-- Le modèle d'embeddings (`all-MiniLM-L6-v2`) est téléchargé une fois depuis HuggingFace puis mis en cache dans le navigateur.
-- La base de données est un PostgreSQL embarqué (PGlite / WASM) persisté dans IndexedDB.
-- La recherche vectorielle utilise un index HNSW stocké dans cette même base.
+1. [Concept & Philosophy](#1-concept--philosophy)
+2. [Tech Stack](#2-tech-stack)
+3. [File Structure](#3-file-structure)
+4. [Architecture & Module Communication](#4-architecture--module-communication)
+5. [The Three Pipelines in Detail](#5-the-three-pipelines-in-detail)
+   - [Capture Pipeline](#51-capture-pipeline--the-foundation)
+   - [Search Pipeline](#52-search-pipeline)
+   - [Graph Pipeline](#53-graph-pipeline)
+6. [Role of Each File](#6-role-of-each-file)
+7. [Installation & Running](#7-installation--running)
+8. [Testing the Project](#8-testing-the-project)
+9. [Customizing the Extension](#9-customizing-the-extension)
+10. [Configuration & Key Parameters](#10-configuration--key-parameters)
+11. [Common Troubleshooting](#11-common-troubleshooting)
 
 ---
 
-## 2. Stack technique
+## 1. Concept & Philosophy
 
-| Rôle | Technologie |
+Second Brain turns your browser into a **personal memory engine**: every page you read is automatically captured, cleaned, indexed, and made searchable — without ever leaving your machine.
+
+**No external APIs.** No Gemini, OpenAI, or Claude. Everything runs locally:
+- The embedding model (`all-MiniLM-L6-v2`) is downloaded once from HuggingFace then cached in the browser.
+- The database is an embedded PostgreSQL instance (PGlite / WASM) persisted in IndexedDB.
+- Vector search uses an HNSW index stored in that same database.
+
+---
+
+## 2. Tech Stack
+
+| Role | Technology |
 |---|---|
-| Build & dev | **WXT** (framework extensions) + **Vite** |
-| Langage | **TypeScript** |
-| Base de données | **PGlite** (PostgreSQL en WASM) + extension **pgvector** |
-| Extraction de contenu | **Readability.js** (Mozilla) + **DOMPurify** |
-| Embeddings locaux | **Transformers.js** (`@huggingface/transformers`) |
-| Modèle ML | `Xenova/all-MiniLM-L6-v2` quantizé q8 (384 dimensions) |
-| Recherche vectorielle | Index **HNSW** via pgvector |
-| Recherche textuelle | **Full-Text Search** PostgreSQL (`tsvector` + `GIN`) |
+| Build & dev | **WXT** (extension framework) + **Vite** |
+| Language | **TypeScript** |
+| Database | **PGlite** (PostgreSQL in WASM) + **pgvector** extension |
+| Content extraction | **Readability.js** (Mozilla) + **DOMPurify** |
+| Local embeddings | **Transformers.js** (`@huggingface/transformers`) |
+| ML model | `Xenova/all-MiniLM-L6-v2` quantized q8 (384 dimensions) |
+| Vector search | **HNSW** index via pgvector |
+| Text search | PostgreSQL **Full-Text Search** (`tsvector` + `GIN`) |
 | Clustering | **ml-kmeans** (k-means++) |
-| Graphe | **graphology** |
-| Visualisation graphe | **Cytoscape.js** |
+| Graph | **graphology** |
+| Graph visualization | **Cytoscape.js** |
 | Charts | **Recharts** |
 | UI | **React** |
 
 ---
 
-## 3. Structure des fichiers
+## 3. File Structure
 
 ```
 second-brain/
 │
-├── wxt.config.ts              # Config WXT : manifest, permissions, CSP WASM
+├── wxt.config.ts              # WXT config: manifest, permissions, WASM CSP
 ├── package.json
 ├── tsconfig.json
 │
-├── entrypoints/               # Points d'entrée Chrome (gérés par WXT)
-│   ├── background.ts          # Service worker central — orchestrateur
-│   ├── content.ts             # Injecté dans chaque page visitée
+├── entrypoints/               # Chrome entry points (managed by WXT)
+│   ├── background.ts          # Central service worker — orchestrator
+│   ├── content.ts             # Injected into every visited page
 │   ├── popup/
 │   │   ├── index.html
 │   │   ├── main.tsx
-│   │   └── Popup.tsx          # Barre de recherche rapide (400px)
+│   │   └── Popup.tsx          # Quick search bar (400px)
 │   └── sidepanel/
 │       ├── index.html
 │       ├── main.tsx
-│       └── SidePanel.tsx      # Interface principale (4 onglets)
+│       └── SidePanel.tsx      # Main interface (4 tabs)
 │
-├── core/                      # Logique métier pure — sans API Chrome
-│   ├── types.ts               # Types partagés (ExtractedPage, StoredPage, SearchResult)
+├── core/                      # Pure business logic — no Chrome APIs
+│   ├── types.ts               # Shared types (ExtractedPage, StoredPage, SearchResult)
 │   ├── extraction/
-│   │   ├── extractContent.ts  # Wrapper Readability.js
-│   │   └── sanitize.ts        # Nettoyage HTML (DOMPurify)
+│   │   ├── extractContent.ts  # Readability.js wrapper
+│   │   └── sanitize.ts        # HTML sanitization (DOMPurify)
 │   ├── indexing/
-│   │   ├── keywords.ts        # Extraction TF + stopwords FR/EN
-│   │   ├── embeddings.ts      # Wrapper Transformers.js (communication avec le Worker)
-│   │   └── indexPage.ts       # Orchestrateur : keywords → embedding → sauvegarde
+│   │   ├── keywords.ts        # TF extraction + FR/EN stopwords
+│   │   ├── embeddings.ts      # Transformers.js wrapper (Worker communication)
+│   │   └── indexPage.ts       # Orchestrator: keywords → embedding → save
 │   ├── search/
-│   │   ├── keywordSearch.ts   # Recherche FTS PostgreSQL
-│   │   ├── vectorSearch.ts    # Recherche cosine via pgvector
-│   │   └── hybridSearch.ts    # Fusion des deux scores
+│   │   ├── keywordSearch.ts   # PostgreSQL FTS search
+│   │   ├── vectorSearch.ts    # Cosine search via pgvector
+│   │   └── hybridSearch.ts    # Score fusion
 │   └── graph/
-│       ├── clustering.ts      # K-means sur les embeddings
-│       └── buildGraph.ts      # Construction graphe + sérialisation Cytoscape
+│       ├── clustering.ts      # K-means on embeddings
+│       └── buildGraph.ts      # Graph construction + Cytoscape serialization
 │
-├── storage/                   # Seule couche qui touche la base de données
-│   ├── db.ts                  # Singleton PGlite + gestion des migrations
-│   ├── pagesRepository.ts     # CRUD pages (savePage, getRecentPages…)
-│   ├── embeddingsRepository.ts # CRUD vecteurs (saveEmbedding, findSimilarPages)
-│   ├── graphRepository.ts     # Lecture embeddings pour graphe, saveClusterIds
-│   ├── statsRepository.ts     # Requêtes dashboard (totaux, activité, domaines)
+├── storage/                   # Only layer that touches the database
+│   ├── db.ts                  # PGlite singleton + migration runner
+│   ├── pagesRepository.ts     # Pages CRUD (savePage, getRecentPages…)
+│   ├── embeddingsRepository.ts # Vectors CRUD (saveEmbedding, findSimilarPages)
+│   ├── graphRepository.ts     # Embedding reads for graph, saveClusterIds
+│   ├── statsRepository.ts     # Dashboard queries (totals, activity, domains)
 │   └── migrations/
-│       ├── 001_init.sql       # Tables pages + page_embeddings + index HNSW
-│       ├── 002_add_keywords.sql # Colonne keywords JSONB
-│       ├── 003_add_fts.sql    # Colonne tsvector + index GIN + trigger
-│       └── 004_add_clusters.sql # Colonne cluster_id
+│       ├── 001_init.sql       # pages + page_embeddings tables + HNSW index
+│       ├── 002_add_keywords.sql # keywords JSONB column
+│       ├── 003_add_fts.sql    # tsvector column + GIN index + trigger
+│       └── 004_add_clusters.sql # cluster_id column
 │
 ├── messaging/
-│   └── messageTypes.ts        # Contrat typé UI ↔ background (tous les types de messages)
+│   └── messageTypes.ts        # Typed UI ↔ background contract (all message types)
 │
 ├── workers/
-│   └── embedding.worker.ts    # Web Worker dédié au calcul ML (ne bloque pas l'UI)
+│   └── embedding.worker.ts    # Dedicated Web Worker for ML computation
 │
 ├── ui/
 │   ├── styles/
-│   │   ├── tokens.css         # Variables CSS (couleurs, typo, spacing)
-│   │   └── clusterColors.ts   # Palette de couleurs par cluster
+│   │   ├── tokens.css         # CSS variables (colors, typography, spacing)
+│   │   └── clusterColors.ts   # Color palette per cluster
 │   ├── hooks/
-│   │   ├── useSearch.ts       # State + debounce pour la recherche
-│   │   ├── useStats.ts        # Chargement paresseux des stats
-│   │   └── useRecent.ts       # Pagination des pages récentes
+│   │   ├── useSearch.ts       # State + debounce for search
+│   │   ├── useStats.ts        # Lazy stats loading
+│   │   └── useRecent.ts       # Recent pages pagination
 │   └── components/
-│       ├── SearchBar.tsx      # Input avec spinner et bouton clear
-│       ├── ResultCard.tsx     # Carte de résultat avec surlignage
-│       ├── EmptyState.tsx     # États vides contextuels
-│       ├── RecentList.tsx     # Historique groupé par jour
-│       ├── Dashboard.tsx      # Charts Recharts (activité, domaines, clusters)
-│       └── GraphView.tsx      # Visualisation Cytoscape.js
+│       ├── SearchBar.tsx      # Input with spinner and clear button
+│       ├── ResultCard.tsx     # Result card with term highlighting
+│       ├── EmptyState.tsx     # Contextual empty states
+│       ├── RecentList.tsx     # History grouped by day
+│       ├── Dashboard.tsx      # Recharts (activity, domains, clusters)
+│       └── GraphView.tsx      # Cytoscape.js visualization
 │
 └── public/
     ├── icons/
-    └── wasm/                  # Fichiers .wasm d'onnxruntime-web (copiés au postinstall)
+    └── wasm/                  # onnxruntime-web .wasm files (copied at postinstall)
 ```
 
 ---
 
-## 4. Architecture & communication entre modules
+## 4. Architecture & Module Communication
 
-### Vue d'ensemble
+### Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         NAVIGATEUR CHROME                       │
+│                          CHROME BROWSER                         │
 │                                                                 │
 │  ┌──────────────┐    ┌──────────────────────────────────────┐  │
 │  │ Content      │    │         Background Service Worker     │  │
@@ -149,7 +150,7 @@ second-brain/
 │  │ DOMPurify    │    │  │  search │◀─▶│  PGlite (WASM)   │  │  │
 │  │              │    │  │  graph  │   │  pgvector (HNSW) │  │  │
 │  │              │◀───│  │  index  │   └──────────────────┘  │  │
-│  │ Widget sug.  │    │  └────▲────┘                          │  │
+│  │ Sug. widget  │    │  └────▲────┘                          │  │
 │  └──────────────┘    │       │ postMessage                   │  │
 │                      │  ┌────┴──────────────┐                │  │
 │  ┌──────────────┐    │  │  embedding.worker │                │  │
@@ -159,52 +160,52 @@ second-brain/
 │         │            └────────────▲─────────────────────────┘  │
 │  ┌──────┴───────┐                 │ chrome.runtime.sendMessage  │
 │  │  Side Panel  │─────────────────┘                            │
-│  │  4 onglets   │                                              │
+│  │   4 tabs     │                                              │
 │  └──────────────┘                                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Règle fondamentale de communication
+### The Golden Rule of Communication
 
-L'extension Chrome impose une séparation stricte entre les contextes. Les modules ne s'appellent **jamais directement** entre contextes différents :
+Chrome extensions enforce strict context separation. Modules **never call each other directly** across different contexts:
 
-| De | Vers | Mécanisme |
+| From | To | Mechanism |
 |---|---|---|
 | Content script → Background | `chrome.runtime.sendMessage` |
 | UI (Popup/SidePanel) → Background | `chrome.runtime.sendMessage` |
 | Background → Content script | `chrome.tabs.sendMessage(tabId, …)` |
 | Background → Embedding Worker | `worker.postMessage` / `worker.onmessage` |
 
-Tous les types de messages sont centralisés dans `messaging/messageTypes.ts`. Ajouter un nouveau message = modifier uniquement ce fichier.
+All message types are centralized in `messaging/messageTypes.ts`. Adding a new message type means editing only that file.
 
-### Pourquoi `core/` est séparé de `storage/`
+### Why `core/` is Separate from `storage/`
 
-`core/` contient la logique pure : algorithmes d'extraction, de recherche, de clustering. Ces modules **n'importent jamais** `chrome.*` ni IndexedDB directement. Avantage : ils sont testables avec Vitest sans simuler un environnement d'extension.
+`core/` contains pure logic: extraction, search, and clustering algorithms. These modules **never import** `chrome.*` or IndexedDB directly. The benefit: they can be tested with Vitest without simulating an extension environment.
 
-`storage/` est la seule couche autorisée à parler à PGlite. Si demain PGlite est remplacé par Dexie ou SQLite WASM, seul ce dossier change.
+`storage/` is the only layer allowed to talk to PGlite. If PGlite is replaced tomorrow by Dexie or SQLite WASM, only this folder changes.
 
 ---
 
-## 5. Les trois pipelines en détail
+## 5. The Three Pipelines in Detail
 
-### 5.1 Pipeline Capture — la base de tout
+### 5.1 Capture Pipeline — The Foundation
 
-Déclenché automatiquement à chaque page visitée.
+Triggered automatically on every page visit.
 
 ```
-Page visitée par l'utilisateur
+User visits a page
          │
          ▼
 [content.ts] setTimeout 1500ms
-  (laisse les SPA React/Vue finir leur rendu)
+  (lets React/Vue SPAs finish their initial render)
          │
-         ▼ shouldSkip() → filtre login, chrome://, etc.
+         ▼ shouldSkip() → filters login pages, chrome://, etc.
          │
          ▼
 [extractContent.ts] Readability.js
-  • clone du DOM (Readability mute le DOM !)
-  • extraction : titre, texte propre, extrait, auteur, langue
-  • si textContent < 200 chars → abandon
+  • DOM clone (Readability mutates the DOM it receives!)
+  • extracts: title, clean text, excerpt, author, language
+  • if textContent < 200 chars → abort
          │
          ▼
 [content.ts] sendMessage({ type: 'CAPTURE_PAGE', payload })
@@ -218,10 +219,10 @@ Page visitée par l'utilisateur
 [pagesRepository.ts]    [indexPage.ts]
  savePage()              │
  ON CONFLICT → UPDATE    ├─▶ [keywords.ts] TF + stopwords → JSONB
- (URL = clé unique)      │
+ (URL = unique key)      │
                          └─▶ [embeddings.ts] → [embedding.worker.ts]
                                   all-MiniLM-L6-v2 (q8)
-                                  text.slice(0, 2000) → vecteur 384d
+                                  text.slice(0, 2000) → 384d vector
                                        │
                                        ▼
                               [embeddingsRepository.ts]
@@ -230,7 +231,7 @@ Page visitée par l'utilisateur
                                        ▼
                               [background.ts]
                                findSimilarPages(embedding, 4)
-                               similarité > 0.65 et url ≠ page courante
+                               similarity > 0.65 and url ≠ current page
                                        │
                                        ▼
                               chrome.tabs.sendMessage(tabId)
@@ -238,26 +239,26 @@ Page visitée par l'utilisateur
                                        │
                                        ▼
                               [content.ts] injectSuggestionWidget()
-                               Shadow DOM → widget flottant 8 secondes
+                               Shadow DOM → floating widget for 8 seconds
 ```
 
-**Points clés :**
-- Le délai de 1500ms est un compromis pour les SPA. Ajuste si tu observes des captures vides sur des sites spécifiques.
-- `ON CONFLICT (url) DO UPDATE` : revisiter une page met à jour son contenu, pas de doublon.
-- L'embedding est retourné par `indexPage()` et réutilisé immédiatement pour les suggestions — pas de double calcul.
+**Key points:**
+- The 1500ms delay is a compromise for SPAs. Increase it if you notice empty captures on specific sites.
+- `ON CONFLICT (url) DO UPDATE`: revisiting a page updates its content, no duplicates.
+- The embedding returned by `indexPage()` is immediately reused for suggestions — no double computation.
 
 ---
 
-### 5.2 Pipeline Recherche
+### 5.2 Search Pipeline
 
-Déclenché quand l'utilisateur tape dans le popup ou le side panel.
+Triggered when the user types in the popup or side panel.
 
 ```
-Utilisateur tape une requête
+User types a query
          │
          ▼
 [useSearch.ts] debounce 280ms
-  (évite une requête à chaque frappe)
+  (avoids a request on every keystroke)
          │
          ▼
 sendMessage({ type: 'SEARCH', payload: { query, limit: 15 } })
@@ -275,39 +276,39 @@ sendMessage({ type: 'SEARCH', payload: { query, limit: 15 } })
  tsquery('simple')         │
  @@ search_vector    findSimilarPages(embedding)
  ts_rank_cd()         cosine similarity (HNSW)
- → score FTS          filtre > 0.25
-                      → score vectoriel
+ → FTS score          filter > 0.25
+                      → vector score
     │                    │
     └────────┬───────────┘
              ▼
-    Fusion par page.id dans une Map
-    score hybride = 0.6 × vectorScore + 0.4 × keywordScore
-    (keywordScore normalisé par le max du batch)
+    Merge by page.id into a Map
+    hybrid score = 0.6 × vectorScore + 0.4 × keywordScore
+    (keywordScore normalized by batch max)
              │
              ▼
-    Tri par score DESC → slice(0, limit)
+    Sort by score DESC → slice(0, limit)
              │
              ▼
     { type: 'SEARCH_RESULTS', results: SearchResult[] }
              │
              ▼
 [useSearch.ts] setState → re-render
-[ResultCard.tsx] affichage avec surlignage des termes
+[ResultCard.tsx] display with term highlighting
 ```
 
-**Pourquoi recherche hybride ?**
-- La recherche vectorielle seule rate les termes techniques exacts ("JWT", "pgvector") — le modèle peut ne pas les connaître.
-- La FTS seule rate les reformulations ("sécuriser une API" vs "authentification token").
-- La combinaison des deux donne les meilleurs résultats en pratique.
+**Why hybrid search?**
+- Vector search alone misses exact technical terms ("JWT", "pgvector") — the model may not know them well.
+- FTS alone misses reformulations ("secure an API" vs "token authentication").
+- The combination of both gives the best results in practice.
 
 ---
 
-### 5.3 Pipeline Graphe
+### 5.3 Graph Pipeline
 
-Déclenché manuellement (bouton "Construire le graphe").
+Triggered manually (by clicking "Build graph").
 
 ```
-Utilisateur clique "Construire le graphe"
+User clicks "Build graph"
          │
          ▼
 [SidePanel.tsx] handleBuildGraph()
@@ -315,33 +316,33 @@ sendMessage({ type: 'BUILD_GRAPH', payload: { limit: 300 } })
          │
          ▼
 [background.ts] handleBuildGraph()
-  Vérifie le cache en mémoire (TTL 10 min)
-  Si cache valide → retourne directement
+  Checks in-memory cache (TTL 10 min)
+  If cache is valid → return immediately
          │
     ┌────┴────────────────────────┐
     ▼                             ▼
 [clustering.ts]           [buildGraph.ts]
  getGraphData(300)
-  (pages récentes avec embedding)
+  (most recent pages with embeddings)
          │
          ▼
- k = √(n/2) borné [3, 15]
+ k = √(n/2) capped to [3, 15]
  KMeans(embeddings, k, 'kmeans++')
- → cluster_id par page
+ → cluster_id per page
          │
          ▼
  saveClusterIds() → UPDATE pages (batch unnest)
          │
          ▼
 [buildGraph.ts]
- getGraphData(300)  ← récupère cluster_id mis à jour
+ getGraphData(300)  ← fetches updated cluster_ids
          │
          ▼
- Pour chaque paire (i, j) :
+ For each pair (i, j):
    score = dotProduct(embedding_i, embedding_j)
-   (dot product = cosine similarity car vecteurs normalisés)
-   si score > 0.65 → candidat arête
-   → garde top 5 voisins par page
+   (dot product = cosine similarity on normalized vectors)
+   if score > 0.65 → edge candidate
+   → keep top 5 neighbors per page
          │
          ▼
  graphology Graph
@@ -349,7 +350,7 @@ sendMessage({ type: 'BUILD_GRAPH', payload: { limit: 300 } })
    .addEdge(src, tgt, { weight })
          │
          ▼
- Sérialisation → { nodes[], edges[] }
+ Serialization → { nodes[], edges[] }
          │
          ▼
 [background.ts] graphCache = { data, at: Date.now() }
@@ -358,57 +359,57 @@ sendMessage({ type: 'BUILD_GRAPH', payload: { limit: 300 } })
          ▼
 [GraphView.tsx]
  cytoscape({ elements: nodes + edges })
- layout: 'cose' (physique, sans animation)
- nœuds colorés par cluster, taille ∝ degree
- clic → highlight des voisins directs
+ layout: 'cose' (physics, no animation)
+ nodes colored by cluster, size ∝ degree
+ click → highlight direct neighbors + tooltip
 ```
 
 ---
 
-## 6. Rôle de chaque fichier
+## 6. Role of Each File
 
 ### `entrypoints/`
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `background.ts` | Cerveau de l'extension. Reçoit tous les messages, orchestre les appels à `core/` et `storage/`, maintient le cache du graphe. Tourne en tant que Service Worker MV3. |
-| `content.ts` | Injecté dans chaque page. Extrait le contenu, envoie au background, affiche le widget de suggestions. N'a pas accès à `storage/`. |
-| `popup/Popup.tsx` | Interface compacte (400px). Uniquement la recherche rapide + bouton d'ouverture du side panel. |
-| `sidepanel/SidePanel.tsx` | Interface principale : 4 onglets (Recherche, Récents, Graphe, Stats). Orchestre tous les hooks. |
+| `background.ts` | The brain of the extension. Receives all messages, orchestrates calls to `core/` and `storage/`, maintains the graph cache. Runs as an MV3 Service Worker. |
+| `content.ts` | Injected into every page. Extracts content, sends it to the background, renders the suggestion widget. Has no access to `storage/`. |
+| `popup/Popup.tsx` | Compact interface (400px). Only the quick search bar + side panel open button. |
+| `sidepanel/SidePanel.tsx` | Main interface: 4 tabs (Search, Recent, Graph, Stats). Orchestrates all hooks. |
 
 ### `core/`
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `types.ts` | Source de vérité des types TypeScript. `ExtractedPage` → `StoredPage` → `SearchResult`. |
-| `extraction/extractContent.ts` | Clone le DOM, passe à Readability, retourne `null` si le contenu est trop pauvre (< 200 chars). |
-| `extraction/sanitize.ts` | Nettoie le HTML pour l'affichage (liste blanche de balises). Non utilisé pour l'indexation (qui travaille sur le texte brut). |
-| `indexing/keywords.ts` | Tokenise, enlève les accents, filtre les stopwords FR/EN, retourne les N termes les plus fréquents. |
-| `indexing/embeddings.ts` | Crée et maintient le Web Worker. Envoie les textes via `postMessage`, corrèle les réponses par UUID. Initialise le chemin WASM depuis `chrome.runtime.getURL`. |
-| `indexing/indexPage.ts` | Orchestrateur : appelle keywords.ts + embeddings.ts + les deux repositories. Retourne l'embedding pour que le background puisse l'utiliser pour les suggestions sans recalcul. |
-| `search/keywordSearch.ts` | Requête PostgreSQL FTS avec `websearch_to_tsquery` et `ts_rank_cd`. Normalise le score. |
-| `search/vectorSearch.ts` | Génère un embedding pour la requête, appelle `findSimilarPages`, filtre les scores < 0.25. |
-| `search/hybridSearch.ts` | Lance les deux recherches en parallèle (`Promise.all`), fusionne par `page.id`, calcule le score pondéré. |
-| `graph/clustering.ts` | Charge les embeddings, calcule `k`, lance k-means++, sauvegarde les `cluster_id`. |
-| `graph/buildGraph.ts` | Calcule les similarités pairwise en mémoire (dot product), construit le graphe graphology, sérialise pour Cytoscape. |
+| `types.ts` | Single source of truth for TypeScript types. `ExtractedPage` → `StoredPage` → `SearchResult`. |
+| `extraction/extractContent.ts` | Clones the DOM, passes it to Readability, returns `null` if content is too sparse (< 200 chars). |
+| `extraction/sanitize.ts` | Sanitizes HTML for display (allowlist of tags). Not used for indexing, which works on plain text. |
+| `indexing/keywords.ts` | Tokenizes, removes accents, filters FR/EN stopwords, returns the N most frequent terms. |
+| `indexing/embeddings.ts` | Creates and maintains the Web Worker. Sends texts via `postMessage`, correlates responses by UUID. Initializes the WASM path via `chrome.runtime.getURL`. |
+| `indexing/indexPage.ts` | Orchestrator: calls keywords.ts + embeddings.ts + both repositories. Returns the embedding so the background can reuse it for suggestions without recomputing. |
+| `search/keywordSearch.ts` | PostgreSQL FTS query with `websearch_to_tsquery` and `ts_rank_cd`. Normalizes the score. |
+| `search/vectorSearch.ts` | Generates an embedding for the query, calls `findSimilarPages`, filters scores < 0.25. |
+| `search/hybridSearch.ts` | Runs both searches in parallel (`Promise.all`), merges by `page.id`, computes the weighted score. |
+| `graph/clustering.ts` | Loads embeddings, computes `k`, runs k-means++, saves `cluster_id` values. |
+| `graph/buildGraph.ts` | Computes pairwise similarities in memory (dot product), builds the graphology graph, serializes for Cytoscape. |
 
 ### `storage/`
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `db.ts` | Singleton PGlite avec `idb://second-brain-db`. `relaxedDurability: true` pour la perf. Lance les migrations dans l'ordre à chaque démarrage (idempotent grâce aux `IF NOT EXISTS`). |
-| `pagesRepository.ts` | `savePage` (upsert sur URL), `getPageByUrl`, `countPages`, `getRecentPages` (pagination). |
-| `embeddingsRepository.ts` | `saveEmbedding` (upsert), `findSimilarPages` (opérateur `<=>` pgvector, index HNSW). |
-| `graphRepository.ts` | `getGraphData` (pages + embeddings pour le clustering), `saveClusterIds` (batch update via `unnest`). |
-| `statsRepository.ts` | 4 requêtes parallèles : totaux, activité par jour, top domaines, distribution clusters. |
-| `migrations/*.sql` | Exécutées dans l'ordre à chaque démarrage. Idempotentes (`IF NOT EXISTS`, `IF NOT NULL`). |
+| `db.ts` | PGlite singleton with `idb://second-brain-db`. `relaxedDurability: true` for performance. Runs migrations in order at every startup (idempotent thanks to `IF NOT EXISTS`). |
+| `pagesRepository.ts` | `savePage` (upsert on URL), `getPageByUrl`, `countPages`, `getRecentPages` (pagination). |
+| `embeddingsRepository.ts` | `saveEmbedding` (upsert), `findSimilarPages` (pgvector `<=>` operator, HNSW index). |
+| `graphRepository.ts` | `getGraphData` (pages + embeddings for clustering), `saveClusterIds` (batch update via `unnest`). |
+| `statsRepository.ts` | 4 parallel queries: totals, daily activity, top domains, cluster distribution. |
+| `migrations/*.sql` | Run in order at every startup. Idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`). |
 
 ### `messaging/messageTypes.ts`
 
-Contrat unique entre tous les modules. Toute la communication de l'extension passe par ce fichier.
+Single contract between all modules. All extension communication flows through this file.
 
 ```typescript
-// Messages envoyés par l'UI → background
+// Messages sent by UI → background
 type ExtensionMessage =
   | { type: 'CAPTURE_PAGE'; payload: ExtractedPage }
   | { type: 'SEARCH';       payload: { query: string; limit?: number } }
@@ -416,11 +417,11 @@ type ExtensionMessage =
   | { type: 'GET_STATS' }
   | { type: 'GET_RECENT';   payload: { limit: number; offset: number } };
 
-// Message push background → content script (sens inverse)
+// Push message background → content script (reverse direction)
 type TabMessage =
   | { type: 'SHOW_SUGGESTIONS'; results: SearchResult[] };
 
-// Réponses du background → UI
+// Background → UI responses
 type ExtensionResponse =
   | { type: 'SEARCH_RESULTS'; results: SearchResult[] }
   | { type: 'GRAPH_DATA';     graph: SerializedGraph | null }
@@ -431,97 +432,127 @@ type ExtensionResponse =
 
 ### `workers/embedding.worker.ts`
 
-Isolé du thread principal pour ne jamais bloquer l'UI ni le service worker.
+Isolated from the main thread to never block the UI or the service worker.
 
-- Reçoit `{ type: 'INIT', wasmBaseUrl }` → configure le chemin WASM
-- Reçoit `{ type: 'EMBED', id, text }` → génère l'embedding, répond avec `{ id, embedding }`
-- Maintient le modèle en mémoire (singleton) → chargé une seule fois, réutilisé pour tous les textes
+- Receives `{ type: 'INIT', wasmBaseUrl }` → configures the WASM path
+- Receives `{ type: 'EMBED', id, text }` → generates the embedding, responds with `{ id, embedding }`
+- Keeps the model in memory (singleton) → loaded once, reused for all texts
 
 ### `ui/`
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `styles/tokens.css` | Variables CSS globales. Modifie ici pour changer toute la palette. |
-| `styles/clusterColors.ts` | Palette de 15 couleurs distinctes. Partagée entre GraphView et Dashboard. |
-| `hooks/useSearch.ts` | Debounce 280ms, annule les requêtes périmées via `ref`, retourne `{ results, loading, error, query, search, clear }`. |
-| `hooks/useStats.ts` | Charge les stats une seule fois quand l'onglet Stats devient actif. `refresh()` force un rechargement. |
-| `hooks/useRecent.ts` | Pagination infinie (50 par page). Charge au premier affichage de l'onglet Récents. |
-| `components/SearchBar.tsx` | Input contrôlé avec icône de recherche / spinner et bouton clear. |
-| `components/ResultCard.tsx` | Affiche titre (avec surlignage regex), domaine, extrait, date relative, termes matchés (badges ambre). |
-| `components/EmptyState.tsx` | Deux états : mémoire vide (premier lancement) ou aucun résultat pour la requête. |
-| `components/RecentList.tsx` | Groupe les pages par jour (Aujourd'hui / Hier / date longue). Pastille colorée = cluster. Pagination "Voir plus". |
-| `components/Dashboard.tsx` | AreaChart activité, BarChart horizontal domaines, barres de progression clusters. Recharts + CSS vars. |
-| `components/GraphView.tsx` | Cytoscape.js dans un `useEffect`. Nœuds colorés par cluster, taille ∝ degree. Clic = highlight voisins + tooltip. Shadow DOM isolé. |
+| `styles/tokens.css` | Global CSS variables. Edit here to change the entire palette. |
+| `styles/clusterColors.ts` | Palette of 15 distinct colors. Shared between GraphView and Dashboard. |
+| `hooks/useSearch.ts` | 280ms debounce, cancels stale requests via `ref`, returns `{ results, loading, error, query, search, clear }`. |
+| `hooks/useStats.ts` | Loads stats once when the Stats tab becomes active. `refresh()` forces a reload. |
+| `hooks/useRecent.ts` | Infinite pagination (50 per page). Loads on first display of the Recent tab. |
+| `components/SearchBar.tsx` | Controlled input with search icon / spinner and clear button. |
+| `components/ResultCard.tsx` | Shows title (with regex highlighting), domain, excerpt, relative date, matched terms (amber badges). |
+| `components/EmptyState.tsx` | Two states: empty memory (first launch) or no results for the query. |
+| `components/RecentList.tsx` | Groups pages by day (Today / Yesterday / long date). Colored dot = cluster. "Load more" pagination. |
+| `components/Dashboard.tsx` | Activity AreaChart, horizontal domains BarChart, cluster progress bars. Recharts + CSS vars. |
+| `components/GraphView.tsx` | Cytoscape.js in a `useEffect`. Nodes colored by cluster, size ∝ degree. Click = highlight neighbors + tooltip. Shadow DOM isolated. |
 
 ---
 
-## 7. Installation & lancement
+## 7. Installation & Running
 
-### Prérequis
+### Prerequisites
 
 - **Node.js** ≥ 18
+- **pnpm** ≥ 9 (`corepack enable pnpm` or `npm install -g pnpm`)
 - **Chrome** ≥ 114 (Side Panel API)
 
 ### Installation
 
 ```bash
-# 1. Cloner le projet
+# 1. Clone the project
 git clone <repo-url>
 cd second-brain
 
-# 2. Installer les dépendances
-npm install
-# Le postinstall copie automatiquement les fichiers .wasm dans public/wasm/
+# 2. Install dependencies
+pnpm install
+# postinstall automatically copies .wasm files into public/wasm/
 ```
 
-### Développement (hot-reload)
+### Development (hot-reload)
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-WXT lance une instance Chrome avec l'extension déjà chargée et le hot-reload activé.
-Chaque modification de fichier recharge automatiquement l'extension.
+WXT launches a Chrome instance with the extension already loaded and hot-reload enabled.
+Every file change automatically reloads the extension.
 
-> **Important :** le premier lancement télécharge le modèle `all-MiniLM-L6-v2` (≈ 23 Mo quantizé q8) depuis HuggingFace. Ce téléchargement est mis en cache dans le navigateur — les lancements suivants sont instantanés.
+> **Important:** the first launch downloads the `all-MiniLM-L6-v2` model (≈ 23 MB quantized q8) from HuggingFace. This download is cached in the browser — subsequent launches are instant.
 
-### Build de production
+### Production Build
 
 ```bash
-npm run build
+pnpm build
 ```
 
-Génère le dossier `.output/chrome-mv3/` prêt à être soumis sur le Chrome Web Store ou chargé manuellement.
+Generates the `.output/chrome-mv3/` folder, ready to be loaded manually or submitted to the Chrome Web Store.
 
-### Charger manuellement dans Chrome (sans npm run dev)
+### Load the Built Extension in Chrome (without `pnpm dev`)
 
-1. `npm run build`
-2. Ouvrir `chrome://extensions`
-3. Activer le **mode développeur** (coin supérieur droit)
-4. Cliquer **"Charger l'extension non empaquetée"**
-5. Sélectionner le dossier `.output/chrome-mv3/`
+1. `pnpm build`
+2. Open `chrome://extensions`
+3. Enable **Developer mode** (top right corner)
+4. Click **"Load unpacked"**
+5. Select the `.output/chrome-mv3/` folder
+
+The extension is now installed. To see the logs (captures, errors), click the **"Service worker"** link that appears under the extension name in `chrome://extensions`.
+
+> After each new `pnpm build`, click the reload icon ⟳ on the extension card in `chrome://extensions` to pick up the changes.
+
+### Share the Extension with Testers (`.zip`)
+
+WXT can package the build for you.
+Run
+
+```bash
+pnpm zip
+# → .output/second-brain-<version>-chrome.zip
+```
+
+**What the tester does** (no Node.js, no pnpm, nothing to install):
+
+1. Unzip the archive somewhere permanent (Chrome loads the extension from this folder, so don't delete or move it afterwards)
+2. Open `chrome://extensions`
+3. Enable **Developer mode** (top right corner)
+4. Click **"Load unpacked"**
+5. Select the unzipped folder (the one that contains `manifest.json`)
+
+**Good to know for testers:**
+
+- Internet access is needed on first use only: the ML model (≈ 23 MB) is downloaded from HuggingFace, then cached.
+- All data stays in the tester's own browser. Nothing is shared with you or sent anywhere.
+- Chrome ≥ 114 is required.
+- Chrome may display a "Disable developer mode extensions" warning at startup. This is normal for extensions loaded outside the Web Store.
 
 ---
 
-## 8. Tester le projet
+## 8. Testing the Project
 
-### Test du pipeline de capture
+### Test the Capture Pipeline
 
-1. Lance `npm run dev`
-2. Visite un article de blog ou une documentation technique
-3. Ouvre `chrome://extensions` → ton extension → **"Service worker"** (lien inspect)
-4. Dans la console du service worker, tu dois voir :
+1. Run `pnpm dev`
+2. Visit a blog post or technical documentation page
+3. Open `chrome://extensions` → your extension → **"Service worker"** (inspect link)
+4. In the service worker console, you should see:
 
 ```
-[Second Brain] Page sauvegardée : "Titre de la page" (id=1)
-[Second Brain] Page indexée (mots-clés + embedding)
+[Second Brain] Page saved: "Page Title" (id=1)
+[Second Brain] Page indexed (keywords + embedding)
 ```
 
-5. Teste qu'une page pauvre en contenu (page de login, page 404) ne génère **aucun log**.
+5. Verify that a content-sparse page (login page, 404) generates **no logs**. 
 
-### Test de la recherche
+### Test Search
 
-Dans la console du service worker, tu peux envoyer une requête directement :
+In the service worker console, you can send a query directly:
 
 ```javascript
 chrome.runtime.sendMessage(
@@ -530,146 +561,143 @@ chrome.runtime.sendMessage(
 );
 ```
 
-Tu dois voir les résultats avec `score`, `vectorScore` et `keywordScore`.
+You should see results with `score`, `vectorScore`, and `keywordScore`.
 
-### Test de la base de données
+### Test the Database
 
 ```javascript
-// Dans la console du service worker
-// Vérifie le nombre de pages capturées
-const { PGlite } = await import(chrome.runtime.getURL('...'));
-// Plus simple : envoie un message GET_STATS
+// In the service worker console
+// Check current stats
 chrome.runtime.sendMessage({ type: 'GET_STATS' }, (res) => console.log(res.stats));
 ```
 
-### Test des suggestions
+### Test Suggestions
 
-1. Capture 10+ pages sur un même sujet (ex : plusieurs articles sur Docker)
-2. Visite une nouvelle page sur ce sujet
-3. Un widget flottant doit apparaître en bas à droite avec les pages similaires déjà capturées
+1. Capture 10+ pages on the same topic (e.g. several Docker-related articles)
+2. Visit a new page on that topic
+3. A floating widget should appear in the bottom right with similar already-captured pages
 
-### Test du graphe
+### Test the Graph
 
-1. Capture au moins 10 pages variées
-2. Ouvre le side panel → onglet **Graphe**
-3. Clique "Construire le graphe"
-4. Après quelques secondes, la constellation de pages doit apparaître
+1. Capture at least 10 varied pages
+2. Open the side panel → **Graph** tab
+3. Click "Build graph"
+4. After a few seconds, the constellation of pages should appear
 
-### Vérifier l'état de la base
+### Check Database State
 
 ```javascript
-// Console du service worker
+// Service worker console
 chrome.runtime.sendMessage({ type: 'GET_STATS' }, (r) => {
-  console.log(`Pages : ${r.stats.totalPages}`);
-  console.log(`Indexées : ${r.stats.indexedPages}`);
-  console.log(`Sites : ${r.stats.totalSites}`);
+  console.log(`Pages: ${r.stats.totalPages}`);
+  console.log(`Indexed: ${r.stats.indexedPages}`);
+  console.log(`Sites: ${r.stats.totalSites}`);
 });
 ```
-
 ---
 
-## 9. Configuration & paramètres clés
+## 9. Configuration & Key Parameters
 
-Tous les paramètres ajustables sont regroupés ici avec leur impact.
+All tunable parameters are gathered here with their impact.
 
 ### Capture
 
 ```typescript
 // entrypoints/content.ts
 setTimeout(capturePage, 1500);
-// → Augmenter si des SPA (Notion, Linear…) donnent des captures vides
-// → Diminuer pour une capture plus réactive
+// → Increase if SPAs (Notion, Linear…) produce empty captures
+// → Decrease for faster, more reactive capture
 ```
 
-### Modèle d'embeddings
+### Embedding Model
 
 ```typescript
 // workers/embedding.worker.ts
 pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { dtype: 'q8' })
-// dtype: 'q4' → plus léger, moins précis
-// dtype: 'fp32' → plus précis, ~4x plus lourd
-// Modèle alternatif : 'nomic-ai/nomic-embed-text-v1.5' (768d, meilleure qualité)
+// dtype: 'q4' → lighter, less accurate
+// dtype: 'fp32' → more accurate, ~4x heavier
+// Alternative model: 'nomic-ai/nomic-embed-text-v1.5' (768d, better quality)
 ```
 
-### Fenêtre de texte pour l'embedding
+### Text Window for Embedding
 
 ```typescript
 // workers/embedding.worker.ts
 text.slice(0, 2000)
-// MiniLM gère ~256 tokens ≈ 1500-2000 caractères utiles
-// Au-delà : le modèle tronque silencieusement
-// Pour les très longs articles : implémenter du chunking (Phase future)
+// MiniLM handles ~256 tokens ≈ 1500-2000 useful characters
+// Beyond that: the model silently truncates
+// For very long articles: implement chunking (future phase)
 ```
 
-### Seuil de similarité pour les suggestions
+### Similarity Threshold for Suggestions
 
 ```typescript
 // entrypoints/background.ts
 .filter((s) => s.url !== page.url && s.similarity > 0.65)
-// Baisser (0.5) → plus de suggestions, moins précises
-// Monter (0.8) → moins de suggestions, très précises
+// Lower (0.5) → more suggestions, less precise
+// Higher (0.8) → fewer suggestions, very precise
 ```
 
-### Recherche hybride — pondération
+### Hybrid Search — Weighting
 
 ```typescript
 // core/search/hybridSearch.ts
-const VECTOR_WEIGHT = 0.6;  // poids de la recherche sémantique
-const KEYWORD_WEIGHT = 0.4; // poids de la recherche par mots-clés
-// Si tes recherches sont très techniques (noms de lib, fonctions) → augmenter KEYWORD_WEIGHT
-// Si tes recherches sont conceptuelles → augmenter VECTOR_WEIGHT
+const VECTOR_WEIGHT = 0.6;  // weight of semantic search
+const KEYWORD_WEIGHT = 0.4; // weight of keyword search
+// If your searches are very technical (lib names, functions) → increase KEYWORD_WEIGHT
+// If your searches are conceptual → increase VECTOR_WEIGHT
 ```
 
-### Seuil de similarité pour le graphe
+### Graph Similarity Threshold
 
 ```typescript
 // core/graph/buildGraph.ts
 const SIMILARITY_THRESHOLD = 0.65;
 const TOP_K_NEIGHBORS = 5;
-// SIMILARITY_THRESHOLD trop haut → graphe fragmenté (îles isolées)
-// SIMILARITY_THRESHOLD trop bas  → graphe trop dense, illisible
-// TOP_K_NEIGHBORS → nombre max de connexions par page
+// SIMILARITY_THRESHOLD too high → fragmented graph (isolated islands)
+// SIMILARITY_THRESHOLD too low  → overly dense, unreadable graph
+// TOP_K_NEIGHBORS → max connections per page
 ```
 
-### Cache du graphe
+### Graph Cache
 
 ```typescript
 // entrypoints/background.ts
 const GRAPH_TTL = 10 * 60 * 1000; // 10 minutes
-// Augmenter si le recalcul est trop fréquent
-// Mettre à 0 pour recalculer à chaque ouverture de l'onglet (debug)
+// Increase if recomputation is too frequent
+// Set to 0 to recompute on every tab open (debug)
 ```
 
 ---
 
-## 10. Dépannage fréquent
+## 10. Common Troubleshooting
 
-### Le widget de suggestions n'apparaît pas
+### Suggestion widget doesn't appear
 
-- Vérifie que la page capturée a bien un embedding (log "Page indexée" dans la console du service worker)
-- Vérifie que d'autres pages similaires existent en base (au moins 3-4 sur le même sujet)
-- Le seuil de 0.65 est peut-être trop élevé pour ton corpus — essaie 0.50
+- Verify the captured page has an embedding (check "Page indexed" log in the service worker console)
+- Verify other similar pages exist in the database (at least 3-4 on the same topic)
+- The 0.65 threshold may be too high for your corpus — try 0.50
 
-### La recherche ne retourne rien
+### Search returns nothing
 
-- La FTS ne fonctionne pas sur des pages sans `search_vector` → les pages capturées avant la migration 003 doivent être remises à jour : `UPDATE pages SET text_content = text_content` (déclenche le trigger)
-- Vérifie que la page est bien indexée avec `GET_STATS`
+- FTS doesn't work on pages without a `search_vector` → pages captured before migration 003 need to be refreshed: `UPDATE pages SET text_content = text_content` (triggers the trigger)
+- Verify the page is indexed with `GET_STATS`
 
-### Le modèle ne se charge pas (erreur WASM)
+### Model fails to load (WASM error)
 
-- Vérifie que `public/wasm/` contient les fichiers `.wasm` (`npm run postinstall` pour les recopier)
-- Vérifie la CSP dans `wxt.config.ts` : `'wasm-unsafe-eval'` doit être présent
+- Verify that `public/wasm/` contains the `.wasm` files (run `pnpm run postinstall` to copy them again)
+- Verify the CSP in `wxt.config.ts`: `'wasm-unsafe-eval'` must be present
 
-### Le service worker est suspendu entre deux visites
+### Service worker is suspended between visits
 
-Comportement normal avec MV3. Le service worker peut être tué par Chrome après quelques secondes d'inactivité. Au prochain message, il redémarre automatiquement. PGlite et le Web Worker sont re-initialisés via leurs singletons respectifs.
+Normal MV3 behavior. The service worker can be killed by Chrome after a few seconds of inactivity. On the next message, it restarts automatically. PGlite and the Web Worker are re-initialized via their respective singletons.
 
-### PGlite ne persiste pas entre les sessions
+### PGlite doesn't persist between sessions
 
-Vérifie que `dataDir: 'idb://second-brain-db'` est bien présent dans `storage/db.ts`. Sans ce préfixe `idb://`, PGlite fonctionne en mémoire vive uniquement.
+Verify that `dataDir: 'idb://second-brain-db'` is present in `storage/db.ts`. Without the `idb://` prefix, PGlite runs in-memory only.
 
-### Le graphe est vide après construction
+### Graph is empty after building
 
-- Il faut au minimum 5 pages avec embeddings
-- Vérifie avec `GET_STATS` que `indexedPages > 0`
-- Si `indexedPages = 0` mais `totalPages > 0` : l'embedding worker a peut-être échoué lors de l'indexation (voir console du service worker)
+- At least 5 pages with embeddings are required
+- Check with `GET_STATS` that `indexedPages > 0`
+- If `indexedPages = 0` but `totalPages > 0`: the embedding worker likely failed during indexing (check the service worker console)
